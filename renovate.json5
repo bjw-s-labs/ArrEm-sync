@@ -19,5 +19,13 @@
       matchPackageNames: ["/python/"],
       allowedVersions: "/3\\.13-alpine3\\.22/",
     },
+    {
+      description: "Auto merge minors and patches for mise packages",
+      matchManagers: ["mise"],
+      automerge: true,
+      automergeType: "pr",
+      matchUpdateTypes: ["minor", "patch"],
+      ignoreTests: false,
+    },
   ],
 }
