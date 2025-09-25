@@ -1,0 +1,23 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: [
+    "github>bjw-s/renovate-config",
+    "github>bjw-s/renovate-config:automerge-docker-digest",
+  ],
+  packageRules: [
+    {
+      description: ["Allowed Alpine Version for Base Images"],
+      matchDatasources: ["docker"],
+      matchFileNames: ["**/Dockerfile"],
+      matchPackageNames: ["/alpine/"],
+      allowedVersions: "/3\\.22/",
+    },
+    {
+      description: ["Allowed Python Version for Base Images"],
+      matchDatasources: ["docker"],
+      matchFileNames: ["**/Dockerfile"],
+      matchPackageNames: ["/python/"],
+      allowedVersions: "/3\\.13-alpine3\\.22/",
+    },
+  ],
+}
