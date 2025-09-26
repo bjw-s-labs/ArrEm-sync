@@ -10,7 +10,7 @@ RUN \
     apk add --no-cache \
         ca-certificates \
         catatonit \
-    && uv sync --locked \
+    && uv sync --locked --no-dev \
     && chown -R root:root /app && chmod -R 755 /app \
     && rm -rf /root/.cache /root/.cargo /tmp/*
 
