@@ -4,7 +4,9 @@ A Python application that synchronizes tags from Radarr/Sonarr to Emby media ser
 
 ## Features
 
-- ✅ Sync tags from Radarr (movies) or Sonarr (TV shows) to Emby
+- ✅ Sync tags from multiple Radarr/Sonarr instances to Emby
+- ✅ Additive tag sync: tags from Arr are added in Emby; existing Emby tags are preserved (never removed)
+- ✅ Support for mixing Radarr and Sonarr instances
 - ✅ Dry-run mode to preview changes without applying them
 - ✅ Batch processing for large libraries
 - ✅ Configurable via environment variables
@@ -18,61 +20,89 @@ Run it directly using the pre-built container image:
 ```bash
 # Test connections first
 docker run --rm \
-  -e ARREM_ARR_TYPE="radarr" \
-  -e ARREM_ARR_URL="http://your-radarr:7878" \
-  -e ARREM_ARR_API_KEY="your_radarr_api_key" \
-  -e ARREM_EMBY_URL="http://your-emby:8096" \
-  -e ARREM_EMBY_API_KEY="your_emby_api_key" \
-  ghcr.io/bjw-s-labs/arrem-sync:rolling test
+   -e ARREM_ARR_1_TYPE="radarr" \
+   -e ARREM_ARR_1_URL="http://your-radarr:7878" \
+   -e ARREM_ARR_1_API_KEY="your_radarr_api_key" \
+   -e ARREM_ARR_1_NAME="Main Radarr" \
+   -e ARREM_EMBY_URL="http://your-emby:8096" \
+   -e ARREM_EMBY_API_KEY="your_emby_api_key" \
+   ghcr.io/bjw-s-labs/arrem-sync:rolling test
 
-# Run a dry-run sync to preview changes
+# Run a dry-run sync to preview changes (dry-run is the default)
 docker run --rm \
-  -e ARREM_ARR_TYPE="radarr" \
-  -e ARREM_ARR_URL="http://your-radarr:7878" \
-  -e ARREM_ARR_API_KEY="your_radarr_api_key" \
-  -e ARREM_EMBY_URL="http://your-emby:8096" \
-  -e ARREM_EMBY_API_KEY="your_emby_api_key" \
-  -e ARREM_DRY_RUN="true" \
-  ghcr.io/bjw-s-labs/arrem-sync:rolling sync
+   -e ARREM_ARR_1_TYPE="radarr" \
+   -e ARREM_ARR_1_URL="http://your-radarr:7878" \
+   -e ARREM_ARR_1_API_KEY="your_radarr_api_key" \
+   -e ARREM_ARR_1_NAME="Main Radarr" \
+   -e ARREM_EMBY_URL="http://your-emby:8096" \
+   -e ARREM_EMBY_API_KEY="your_emby_api_key" \
+   ghcr.io/bjw-s-labs/arrem-sync:rolling
 
 # Run actual sync (disable dry-run mode)
 docker run --rm \
-  -e ARREM_ARR_TYPE="radarr" \
-  -e ARREM_ARR_URL="http://your-radarr:7878" \
-  -e ARREM_ARR_API_KEY="your_radarr_api_key" \
-  -e ARREM_EMBY_URL="http://your-emby:8096" \
-  -e ARREM_EMBY_API_KEY="your_emby_api_key" \
-  ghcr.io/bjw-s-labs/arrem-sync:rolling sync --no-dry-run
+   -e ARREM_ARR_1_TYPE="radarr" \
+   -e ARREM_ARR_1_URL="http://your-radarr:7878" \
+   -e ARREM_ARR_1_API_KEY="your_radarr_api_key" \
+   -e ARREM_ARR_1_NAME="Main Radarr" \
+   -e ARREM_EMBY_URL="http://your-emby:8096" \
+   -e ARREM_EMBY_API_KEY="your_emby_api_key" \
+   ghcr.io/bjw-s-labs/arrem-sync:rolling --no-dry-run
 ```
 
 **Using environment file:**
 
-For convenience, you can create an environment file:
+For convenience, you can create an environment (`.env`) file:
 
 ```bash
-# Create .env file with your configuration
-cat > .env << EOF
-ARREM_ARR_TYPE=radarr
-ARREM_ARR_URL=http://your-radarr:7878
-ARREM_ARR_API_KEY=your_radarr_api_key
+cp .env.example .env
+# Edit .env with your values, then run:
+docker run --rm --env-file .env ghcr.io/bjw-s-labs/arrem-sync:rolling
+```
+
+**Multiple Arr instances:**
+
+```
+# First Radarr instance (regular movies)
+ARREM_ARR_1_TYPE=radarr
+ARREM_ARR_1_URL=http://radarr:7878
+ARREM_ARR_1_API_KEY=your_radarr_api_key
+ARREM_ARR_1_NAME=Radarr
+
+# Second Radarr instance (4K movies)
+ARREM_ARR_2_TYPE=radarr
+ARREM_ARR_2_URL=http://radarr4k:7878
+ARREM_ARR_2_API_KEY=your_radarr4k_api_key
+ARREM_ARR_2_NAME=Radarr 4K
+
+# Sonarr instance
+ARREM_ARR_3_TYPE=sonarr
+ARREM_ARR_3_URL=http://sonarr:8989
+ARREM_ARR_3_API_KEY=your_sonarr_api_key
+ARREM_ARR_3_NAME=Sonarr
+
+# Emby configuration
 ARREM_EMBY_URL=http://your-emby:8096
 ARREM_EMBY_API_KEY=your_emby_api_key
 ARREM_DRY_RUN=false
-EOF
-
-# Run with environment file
-docker run --rm --env-file .env ghcr.io/bjw-s-labs/arrem-sync:rolling sync
 ```
 
 ### Manual Installation
 
-1. Install Python 3.11+ and pip
+1. Install Python 3.13+ and a package manager (uv recommended, or pip)
 2. Clone this repository
 3. Install dependencies:
 
-```bash
-pip install -r requirements.txt
-```
+   Using uv (recommended):
+
+   ```bash
+   uv sync
+   ```
+
+   Or using pip:
+
+   ```bash
+   python -m pip install .
+   ```
 
 4. Configure the application (choose one option):
 
@@ -86,25 +116,41 @@ pip install -r requirements.txt
    **Option B: Using environment variables**
 
    ```bash
-   export ARREM_ARR_TYPE="radarr"
-   export ARREM_ARR_URL="http://localhost:7878"
-   export ARREM_ARR_API_KEY="your_api_key"
+   export ARREM_ARR_1_TYPE="radarr"
+   export ARREM_ARR_1_URL="http://localhost:7878"
+   export ARREM_ARR_1_API_KEY="your_api_key"
+   export ARREM_ARR_1_NAME="Main Radarr"
    export ARREM_EMBY_URL="http://localhost:8096"
    export ARREM_EMBY_API_KEY="your_api_key"
    ```
 
 5. Run the application:
 
-```bash
-# Test connections first
-python main.py test
+   Using uv:
 
-# Run a dry-run sync (default behavior)
-python main.py sync --dry-run
+   ```bash
+   # Test connections first
+   uv run arrem-sync test
 
-# Run actual sync (disable dry-run mode)
-python main.py sync --no-dry-run
-```
+   # Run a dry-run sync (default behavior)
+   uv run arrem-sync
+
+   # Run actual sync (disable dry-run mode)
+   uv run arrem-sync --no-dry-run
+   ```
+
+   Or using the installed CLI directly (pip install .):
+
+   ```bash
+   # Test connections first
+   arrem-sync test
+
+   # Dry-run sync (default)
+   arrem-sync
+
+   # Actual sync
+   arrem-sync --no-dry-run
+   ```
 
 ## Configuration
 
@@ -129,10 +175,17 @@ ARREM_DRY_RUN=true
 ARREM_EMBY_URL=http://your-emby-server:8096
 ARREM_EMBY_API_KEY=your-emby-api-key
 
-# Arr service settings
-ARREM_ARR_TYPE=radarr
-ARREM_ARR_URL=http://your-radarr-server:7878
-ARREM_ARR_API_KEY=your-radarr-api-key
+# First Arr instance
+ARREM_ARR_1_TYPE=radarr
+ARREM_ARR_1_URL=http://your-radarr-server:7878
+ARREM_ARR_1_API_KEY=your-radarr-api-key
+ARREM_ARR_1_NAME=Main Radarr
+
+# Second Arr instance (optional)
+ARREM_ARR_2_TYPE=sonarr
+ARREM_ARR_2_URL=http://your-sonarr-server:8989
+ARREM_ARR_2_API_KEY=your-sonarr-api-key
+ARREM_ARR_2_NAME=Main Sonarr
 
 # Sync settings
 ARREM_BATCH_SIZE=50
@@ -140,13 +193,16 @@ ARREM_BATCH_SIZE=50
 
 ### Required Variables
 
-| Variable             | Description             | Example                 |
-| -------------------- | ----------------------- | ----------------------- |
-| `ARREM_ARR_TYPE`     | Type of Arr service     | `radarr` or `sonarr`    |
-| `ARREM_ARR_URL`      | URL of your Arr service | `http://localhost:7878` |
-| `ARREM_ARR_API_KEY`  | API key for Arr service | `1234567890abcdef`      |
-| `ARREM_EMBY_URL`     | URL of your Emby server | `http://localhost:8096` |
-| `ARREM_EMBY_API_KEY` | API key for Emby server | `abcdef1234567890`      |
+| Variable              | Description                    | Example                 |
+| --------------------- | ------------------------------ | ----------------------- |
+| `ARREM_ARR_N_TYPE`    | Type of Arr service (N=1,2...) | `radarr` or `sonarr`    |
+| `ARREM_ARR_N_URL`     | URL of your Arr service        | `http://localhost:7878` |
+| `ARREM_ARR_N_API_KEY` | API key for Arr service        | `1234567890abcdef`      |
+| `ARREM_ARR_N_NAME`    | Friendly name for instance     | `Main Radarr`           |
+| `ARREM_EMBY_URL`      | URL of your Emby server        | `http://localhost:8096` |
+| `ARREM_EMBY_API_KEY`  | API key for Emby server        | `abcdef1234567890`      |
+
+**Note:** Replace `N` with numbers starting from 1. You can configure multiple Arr instances by using `ARREM_ARR_1_*`, `ARREM_ARR_2_*`, etc.
 
 ### Optional Variables
 
@@ -165,14 +221,14 @@ The application provides several commands:
 Perform a one-time synchronization:
 
 ```bash
-# Basic sync (runs in dry-run mode by default for safety)
-python main.py sync
+# Basic sync (dry-run by default)
+arrem-sync
 
 # Disable dry-run mode to make actual changes
-python main.py sync --no-dry-run
+arrem-sync --no-dry-run
 
 # With custom log level
-python main.py sync --log-level DEBUG
+ARREM_LOG_LEVEL=DEBUG arrem-sync
 ```
 
 ### test
@@ -180,7 +236,7 @@ python main.py sync --log-level DEBUG
 Test connections to Radarr/Sonarr and Emby:
 
 ```bash
-python main.py test
+arrem-sync test
 ```
 
 ## How It Works
@@ -191,7 +247,7 @@ python main.py test
    - TMDb ID (preferred)
    - IMDb ID
    - TVDB ID (for TV shows)
-4. **Sync Tags**: It updates the Emby item's tags to match the Radarr/Sonarr tags
+4. **Sync Tags**: It adds any missing tags from Radarr/Sonarr to the Emby item. Existing tags in Emby are preserved and are never removed by this tool.
 5. **Report**: Provides detailed logging and final statistics
 
 ## Troubleshooting
@@ -220,7 +276,7 @@ Enable debug logging to get more detailed information:
 
 ```bash
 export ARREM_LOG_LEVEL=DEBUG
-python main.py sync
+arrem-sync
 ```
 
 ## Contributing

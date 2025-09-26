@@ -20,9 +20,10 @@ class TestDryRunEnvironmentVariable:
         os.environ.update(
             {
                 "ARREM_DRY_RUN": "true",
-                "ARREM_ARR_TYPE": "radarr",
-                "ARREM_ARR_URL": "http://localhost:7878",
-                "ARREM_ARR_API_KEY": "test_key",
+                "ARREM_ARR_1_TYPE": "radarr",
+                "ARREM_ARR_1_URL": "http://localhost:7878",
+                "ARREM_ARR_1_API_KEY": "test_key",
+                "ARREM_ARR_1_NAME": "Test Radarr",
                 "ARREM_EMBY_URL": "http://localhost:8096",
                 "ARREM_EMBY_API_KEY": "test_key",
             }
@@ -36,9 +37,10 @@ class TestDryRunEnvironmentVariable:
         os.environ.update(
             {
                 "ARREM_DRY_RUN": "false",
-                "ARREM_ARR_TYPE": "radarr",
-                "ARREM_ARR_URL": "http://localhost:7878",
-                "ARREM_ARR_API_KEY": "test_key",
+                "ARREM_ARR_1_TYPE": "radarr",
+                "ARREM_ARR_1_URL": "http://localhost:7878",
+                "ARREM_ARR_1_API_KEY": "test_key",
+                "ARREM_ARR_1_NAME": "Test Radarr",
                 "ARREM_EMBY_URL": "http://localhost:8096",
                 "ARREM_EMBY_API_KEY": "test_key",
             }
@@ -54,12 +56,12 @@ class TestDryRunEnvironmentVariable:
             del os.environ["ARREM_DRY_RUN"]
 
         # Create config directly without loading .env file to test default value
+        from arrem_sync.config import ArrInstanceConfig
+
         config = Config(
-            arr_type="radarr",
-            arr_url="http://localhost:7878",
-            arr_api_key="test_key",
             emby_url="http://localhost:8096",
             emby_api_key="test_key",
+            arr_instances=[ArrInstanceConfig(type="radarr", url="http://localhost:7878", api_key="test_key")],
         )
 
         assert config.dry_run is True
@@ -92,9 +94,10 @@ class TestDryRunEnvironmentVariable:
         os.environ.update(
             {
                 "ARREM_DRY_RUN": env_value,
-                "ARREM_ARR_TYPE": "radarr",
-                "ARREM_ARR_URL": "http://localhost:7878",
-                "ARREM_ARR_API_KEY": "test_key",
+                "ARREM_ARR_1_TYPE": "radarr",
+                "ARREM_ARR_1_URL": "http://localhost:7878",
+                "ARREM_ARR_1_API_KEY": "test_key",
+                "ARREM_ARR_1_NAME": "Test Radarr",
                 "ARREM_EMBY_URL": "http://localhost:8096",
                 "ARREM_EMBY_API_KEY": "test_key",
             }
@@ -106,33 +109,29 @@ class TestDryRunEnvironmentVariable:
     def test_dry_run_direct_config_creation(self):
         """Test dry_run parameter when creating Config directly."""
         # Test with dry_run=True
+        from arrem_sync.config import ArrInstanceConfig
+
         config = Config(
-            arr_type="radarr",
-            arr_url="http://localhost:7878",
-            arr_api_key="test_key",
             emby_url="http://localhost:8096",
             emby_api_key="test_key",
+            arr_instances=[ArrInstanceConfig(type="radarr", url="http://localhost:7878", api_key="test_key")],
             dry_run=True,
         )
         assert config.dry_run is True
 
         # Test with dry_run=False
         config = Config(
-            arr_type="radarr",
-            arr_url="http://localhost:7878",
-            arr_api_key="test_key",
             emby_url="http://localhost:8096",
             emby_api_key="test_key",
+            arr_instances=[ArrInstanceConfig(type="radarr", url="http://localhost:7878", api_key="test_key")],
             dry_run=False,
         )
         assert config.dry_run is False
 
         # Test default value
         config = Config(
-            arr_type="radarr",
-            arr_url="http://localhost:7878",
-            arr_api_key="test_key",
             emby_url="http://localhost:8096",
             emby_api_key="test_key",
+            arr_instances=[ArrInstanceConfig(type="radarr", url="http://localhost:7878", api_key="test_key")],
         )
         assert config.dry_run is True  # Default should be True

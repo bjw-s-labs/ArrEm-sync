@@ -1,10 +1,12 @@
 """Tag synchronization service."""
 
 import logging
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 
 from .arr_client import ArrClient
 from .emby_client import EmbyClient
+from .types import ArrItem, EmbyItem
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +29,7 @@ class TagSyncService:
         # Cache for tag mappings
         self._arr_tags_cache: dict[int, str] | None = None
 
-        # Cache for Emby items to avoid multiple lookups
-        self._emby_items_cache: list[dict[str, Any]] | None = None
+    # No local Emby item cache; rely on EmbyClient's internal caches
 
     def get_arr_tags_mapping(self) -> dict[int, str]:
         """Get mapping of tag IDs to tag labels from Arr service.
@@ -55,30 +56,30 @@ class TagSyncService:
         tag_mapping = self.get_arr_tags_mapping()
         return [tag_mapping.get(tag_id, f"Unknown-{tag_id}") for tag_id in tag_ids]
 
-    def _prefetch_emby_items(self) -> None:
-        """Pre-fetch all Emby items to populate the cache for efficient lookups."""
-        if self._emby_items_cache is not None:
-            logger.debug("Emby items cache already populated")
-            return
+    # Structured result for internal/statistics usage
+    StatusCode = Literal["updated", "already_synced", "no_tags", "not_in_emby", "failed", "error"]
 
-        logger.info("Pre-fetching Emby items to optimize lookups...")
+    @dataclass(frozen=True)
+    class SyncResult:
+        success: bool
+        message: str
+        code: "TagSyncService.StatusCode"
 
-        # Fetch based on arr_type
+    def _warm_emby_client_cache(self) -> None:
+        """Warm EmbyClient caches to optimize lookups; no local caching here."""
+        logger.debug("Warming Emby client caches for efficient matching...")
         if self.arr_client.arr_type == "radarr":
-            self._emby_items_cache = self.emby_client.get_all_movies()
-        else:  # sonarr
-            self._emby_items_cache = self.emby_client.get_all_series()
-
-        # Handle both real lists and Mock objects (for testing)
+            _ = self.emby_client.get_all_movies()
+        else:
+            _ = self.emby_client.get_all_series()
+        # Best-effort log of provider cache size
         try:
-            cache_size = len(self._emby_items_cache)
-            logger.info(f"Pre-fetched {cache_size} Emby items")
-        except TypeError:
-            # This handles Mock objects in tests
-            logger.info("Pre-fetched Emby items (mock data)")
-            self._emby_items_cache = []  # Set to empty list for tests
+            cache_size = len(self.emby_client._provider_id_cache)
+            logger.debug(f"Warmed provider ID cache entries: {cache_size}")
+        except (AttributeError, TypeError):
+            logger.debug("Provider ID cache info not available")
 
-    def find_matching_emby_item(self, arr_item: dict[str, Any]) -> dict[str, Any] | None:
+    def find_matching_emby_item(self, arr_item: ArrItem) -> EmbyItem | None:
         """Find the corresponding Emby item for an Arr item.
 
         This method uses optimized lookups with pre-fetched cache for efficiency.
@@ -89,9 +90,6 @@ class TagSyncService:
         Returns:
             Matching Emby item or None if not found
         """
-        # Ensure Emby items are cached for efficient lookups
-        self._prefetch_emby_items()
-
         item_type = "Movie" if self.arr_client.arr_type == "radarr" else "Series"
 
         # Try multiple provider IDs in order of reliability
@@ -131,57 +129,65 @@ class TagSyncService:
         logger.debug(" ".join(debug_parts))
         return None
 
-    def sync_tags_for_item(self, arr_item: dict[str, Any]) -> tuple[bool, str]:
-        """Sync tags for a single item.
-
-        Args:
-            arr_item: Item from Arr service
-
-        Returns:
-            Tuple of (success, message)
-        """
+    def sync_tags_for_item_structured(self, arr_item: ArrItem) -> "TagSyncService.SyncResult":
+        """Structured sync for a single item, for internal use and stats tracking."""
         try:
             # Find matching Emby item
             emby_item = self.find_matching_emby_item(arr_item)
             if not emby_item:
                 # Item exists in Arr but not in Emby - this is normal and
                 # shouldn't be treated as an error
-                return (
+                return TagSyncService.SyncResult(
                     True,
                     f"Item not found in Emby (may not be imported yet): {arr_item.get('title', 'Unknown')}",
+                    "not_in_emby",
                 )
 
             # Get tags from Arr item
             arr_tag_ids = arr_item.get("tags", [])
             if not arr_tag_ids:
                 logger.debug(f"No tags to sync for {arr_item.get('title', 'Unknown')}")
-                return True, "No tags to sync"
+                return TagSyncService.SyncResult(True, "No tags to sync", "no_tags")
 
             # Resolve tag IDs to labels
             new_tags = self.resolve_tag_labels(arr_tag_ids)
 
-            # Get current tags from Emby item
-            # Extract tag names from TagItems array (Name/Id objects)
+            # Get current tags from Emby item (extract tag names from TagItems array)
             current_tags = [tag_item["Name"] for tag_item in emby_item.get("TagItems", [])]
             logger.debug(f"Current tags for {emby_item.get('Name', 'Unknown')}: {current_tags}")
 
-            # Check if tags need updating
-            if set(new_tags) == set(current_tags):
-                logger.debug(f"Tags already up to date for {emby_item.get('Name', 'Unknown')}")
-                return True, "Tags already up to date"
+            # Non-destructive behavior: only add missing Arr tags; never remove user-set Emby tags
+            current_set = set(current_tags)
+            new_set = set(new_tags)
 
-            # Update tags in Emby
-            success = self.emby_client.update_item_tags(emby_item["Id"], new_tags, dry_run=self.dry_run)
+            # If all Arr tags are already present on Emby, no action needed
+            if new_set.issubset(current_set):
+                logger.debug(f"Tags already up to date for {emby_item.get('Name', 'Unknown')}")
+                return TagSyncService.SyncResult(True, "Tags already up to date", "already_synced")
+
+            # Compute only the tags that are missing on Emby, preserving original order from Arr
+            missing_tags = [t for t in new_tags if t not in current_set]
+            logger.debug(
+                f"Will add missing tags for {emby_item.get('Name', 'Unknown')}: {missing_tags} (dry_run={self.dry_run})"
+            )
+
+            # Update tags in Emby by adding the missing ones only
+            success = self.emby_client.update_item_tags(emby_item["Id"], missing_tags, dry_run=self.dry_run)
 
             if success:
-                action = "Would update" if self.dry_run else "Updated"
-                return True, f"{action} tags: {current_tags} -> {new_tags}"
+                action = "Would add" if self.dry_run else "Added"
+                return TagSyncService.SyncResult(True, f"{action} tags: {missing_tags}", "updated")
             else:
-                return False, "Failed to update tags in Emby"
+                return TagSyncService.SyncResult(False, "Failed to update tags in Emby", "failed")
 
         except Exception as e:
             logger.error(f"Error syncing tags for {arr_item.get('title', 'Unknown')}: {e}")
-            return False, f"Error: {e!s}"
+            return TagSyncService.SyncResult(False, f"Error: {e!s}", "error")
+
+    def sync_tags_for_item(self, arr_item: ArrItem) -> tuple[bool, str]:
+        """Backward-compatible wrapper returning (success, message)."""
+        res = self.sync_tags_for_item_structured(arr_item)
+        return res.success, res.message
 
     def sync_all_tags(self, batch_size: int = 50) -> dict[str, Any]:
         """Sync tags for all items.
@@ -203,8 +209,7 @@ class TagSyncService:
                 raise Exception("Failed to connect to Emby server")
 
             # Pre-fetch Emby items for efficient lookups
-            logger.info("Pre-fetching Emby items for efficient matching...")
-            self._prefetch_emby_items()
+            self._warm_emby_client_cache()
 
             # Get all items from Arr service
             arr_items = self.arr_client.get_all_items()
@@ -224,30 +229,30 @@ class TagSyncService:
             # Process items in batches
             for i in range(0, len(arr_items), batch_size):
                 batch = arr_items[i : i + batch_size]
-                logger.info(f"Processing batch {i // batch_size + 1} ({len(batch)} items)")
+                logger.debug(f"Processing batch {i // batch_size + 1} ({len(batch)} items)")
 
                 for arr_item in batch:
                     try:
-                        success, message = self.sync_tags_for_item(arr_item)
+                        res = self.sync_tags_for_item_structured(arr_item)
                         stats["processed_items"] += 1
 
-                        if success:
-                            if "not found in Emby" in message:
-                                stats["not_in_emby"] += 1
-                                logger.info(f"⚠ {arr_item.get('title', 'Unknown')}: {message}")
-                            elif "already up to date" in message:
-                                stats["already_synced"] += 1
-                                logger.info(f"✓ {arr_item.get('title', 'Unknown')}: {message}")
-                            elif "No tags to sync" in message:
-                                stats["no_tags_to_sync"] += 1
-                                logger.debug(f"◯ {arr_item.get('title', 'Unknown')}: {message}")
-                            else:
-                                stats["successful_syncs"] += 1
-                                logger.info(f"✓ {arr_item.get('title', 'Unknown')}: {message}")
-
+                        if res.success:
+                            match res.code:
+                                case "not_in_emby":
+                                    stats["not_in_emby"] += 1
+                                    logger.info(f"⚠ {arr_item.get('title', 'Unknown')}: {res.message}")
+                                case "already_synced":
+                                    stats["already_synced"] += 1
+                                    logger.info(f"✓ {arr_item.get('title', 'Unknown')}: {res.message}")
+                                case "no_tags":
+                                    stats["no_tags_to_sync"] += 1
+                                    logger.debug(f"◯ {arr_item.get('title', 'Unknown')}: {res.message}")
+                                case _:
+                                    stats["successful_syncs"] += 1
+                                    logger.info(f"✓ {arr_item.get('title', 'Unknown')}: {res.message}")
                         else:
                             stats["failed_syncs"] += 1
-                            error_msg = f"✗ {arr_item.get('title', 'Unknown')}: {message}"
+                            error_msg = f"✗ {arr_item.get('title', 'Unknown')}: {res.message}"
                             stats["errors"].append(error_msg)
                             logger.error(error_msg)
 
@@ -257,20 +262,20 @@ class TagSyncService:
                         stats["errors"].append(error_msg)
                         logger.error(error_msg)
 
-            # Log final statistics
-            logger.info("Tag synchronization completed:")
-            logger.info(f"  Total items: {stats['total_items']}")
-            logger.info(f"  Processed: {stats['processed_items']}")
-            logger.info(f"  Successful syncs: {stats['successful_syncs']}")
-            logger.info(f"  Already synced: {stats['already_synced']}")
-            logger.info(f"  No tags to sync: {stats['no_tags_to_sync']}")
-            logger.info(f"  Not found in Emby: {stats['not_in_emby']}")
-            logger.info(f"  Failed syncs: {stats['failed_syncs']}")
+            # Log final statistics at DEBUG to avoid duplicating CLI summary output
+            logger.debug("Tag synchronization completed:")
+            logger.debug(f"  Total items: {stats['total_items']}")
+            logger.debug(f"  Processed: {stats['processed_items']}")
+            logger.debug(f"  Successful syncs: {stats['successful_syncs']}")
+            logger.debug(f"  Already synced: {stats['already_synced']}")
+            logger.debug(f"  No tags to sync: {stats['no_tags_to_sync']}")
+            logger.debug(f"  Not found in Emby: {stats['not_in_emby']}")
+            logger.debug(f"  Failed syncs: {stats['failed_syncs']}")
 
             # Log cache efficiency info
             try:
                 cache_size = len(self.emby_client._provider_id_cache)
-                logger.info(f"  Provider ID cache entries: {cache_size}")
+                logger.debug(f"  Provider ID cache entries: {cache_size}")
             except (AttributeError, TypeError):
                 # Handle Mock objects in tests or other edge cases
                 logger.debug("  Provider ID cache info not available")
@@ -284,6 +289,5 @@ class TagSyncService:
     def clear_caches(self) -> None:
         """Clear all cached data."""
         self._arr_tags_cache = None
-        self._emby_items_cache = None
         self.emby_client.clear_cache()
         logger.info("Cleared all sync service caches")

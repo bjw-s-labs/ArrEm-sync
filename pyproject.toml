@@ -4,24 +4,20 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ArrEm-sync"
-version = "0.0.1"
+version = "0.0.2"
 description = "Sync tags from Radarr/Sonarr to Emby media server"
 requires-python = ">=3.13"
 keywords = ["media", "radarr", "sonarr", "emby", "sync", "tags"]
 
 dependencies = [
-    "certifi>=2025.8.3",
-    "python-dateutil>=2.9.0",
-    "six>=1.17.0",
-    "urllib3>=2.5.0",
     "requests>=2.31.0",
     "pydantic>=2.10.0",
+    "pydantic-settings>=2.5.0",
     "click>=8.1.7",
     "python-dotenv>=1.0.0",
-    "aiohttp>=3.12.15",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest>=8.3.4",
     "pytest-asyncio>=0.25.0",
@@ -30,9 +26,7 @@ dev = [
     "responses>=0.25.3",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
-    "pre-commit>=4.0.0",
     "types-requests>=2.32.4",
-    "types-psutil>=7.0.0",
 ]
 
 [project.scripts]

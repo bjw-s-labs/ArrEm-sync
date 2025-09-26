@@ -1,11 +1,14 @@
 """Arr (Radarr/Sonarr) client for interacting with Arr APIs."""
 
+import contextlib
 import logging
+from types import TracebackType
 from typing import Any
 
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+
+from .http_utils import create_session
+from .types import ArrItem, ArrTag
 
 logger = logging.getLogger(__name__)
 
@@ -26,20 +29,7 @@ class ArrClient:
         self.api_key = api_key
 
         # Setup session with retry strategy and connection pooling
-        self.session = requests.Session()
-        retry_strategy = Retry(
-            total=3,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["HEAD", "GET", "OPTIONS"],
-        )
-        # Optimize connection pooling for better performance
-        adapter = HTTPAdapter(
-            max_retries=retry_strategy,
-            pool_connections=10,  # Number of connection pools to cache
-            pool_maxsize=20,  # Maximum number of connections to save in the pool
-        )
-        self.session.mount("http://", adapter)
-        self.session.mount("https://", adapter)
+        self.session = create_session()
 
         # Set default headers
         self.session.headers.update({"X-Api-Key": self.api_key, "Content-Type": "application/json"})
@@ -61,6 +51,8 @@ class ArrClient:
         url = f"{self.base_url}/api/v3/{endpoint.lstrip('/')}"
 
         try:
+            # Ensure network calls don't hang indefinitely
+            kwargs.setdefault("timeout", 15)
             response = self.session.request(method, url, **kwargs)
             response.raise_for_status()
             return response.json() if response.content else None
@@ -68,7 +60,7 @@ class ArrClient:
             logger.error(f"Request to {url} failed: {e}")
             raise
 
-    def get_all_items(self) -> list[dict[str, Any]]:
+    def get_all_items(self) -> list[ArrItem]:
         """Get all items (movies or series) from the Arr service.
 
         Returns:
@@ -85,7 +77,7 @@ class ArrClient:
             logger.error(f"Failed to fetch {endpoint}s from {self.arr_type}: {e}")
             raise
 
-    def get_tags(self) -> list[dict[str, Any]]:
+    def get_tags(self) -> list[ArrTag]:
         """Get all tags from the Arr service.
 
         Returns:
@@ -101,7 +93,7 @@ class ArrClient:
             logger.error(f"Failed to fetch tags from {self.arr_type}: {e}")
             raise
 
-    def get_item_by_id(self, item_id: int) -> dict[str, Any] | None:
+    def get_item_by_id(self, item_id: int) -> ArrItem | None:
         """Get a specific item by ID.
 
         Args:
@@ -132,3 +124,20 @@ class ArrClient:
         except Exception as e:
             logger.error(f"Connection to {self.arr_type} failed: {e}")
             return False
+
+    # Resource management
+    def close(self) -> None:
+        """Close underlying HTTP session."""
+        with contextlib.suppress(Exception):
+            self.session.close()
+
+    def __enter__(self) -> "ArrClient":
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self.close()

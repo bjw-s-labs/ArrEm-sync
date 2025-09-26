@@ -68,9 +68,10 @@ def format_missing_env_vars(missing_vars: list[str]) -> str:
 
     # Add example export commands for each missing variable
     example_values = {
-        "ARREM_ARR_TYPE": "radarr",
-        "ARREM_ARR_URL": "http://localhost:7878",
-        "ARREM_ARR_API_KEY": "your_radarr_api_key",
+        "ARREM_ARR_1_TYPE": "radarr",
+        "ARREM_ARR_1_URL": "http://localhost:7878",
+        "ARREM_ARR_1_API_KEY": "your_radarr_api_key",
+        "ARREM_ARR_1_NAME": "Main Radarr",
         "ARREM_EMBY_URL": "http://localhost:8096",
         "ARREM_EMBY_API_KEY": "your_emby_api_key",
     }

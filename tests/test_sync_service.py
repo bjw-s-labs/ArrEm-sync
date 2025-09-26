@@ -196,7 +196,7 @@ class TestTagSyncService:
 
         # Verify
         assert success is True
-        assert "Updated tags" in message
+        assert "Added tags" in message
         self.mock_emby_client.update_item_tags.assert_called_once_with("emby123", ["Action", "Drama"], dry_run=False)
 
     def test_sync_tags_for_item_no_emby_match(self):
@@ -268,7 +268,7 @@ class TestTagSyncService:
 
         # Verify
         assert success is True
-        assert "Updated tags" in message
+        assert "Added tags" in message
         self.mock_emby_client.update_item_tags.assert_called_once_with("emby123", ["Action"], dry_run=False)
 
     def test_sync_all_tags_success(self):
@@ -284,10 +284,10 @@ class TestTagSyncService:
         self.mock_arr_client.get_all_items.return_value = mock_items
 
         # Mock successful sync for both items
-        with patch.object(self.sync_service, "sync_tags_for_item") as mock_sync:
+        with patch.object(self.sync_service, "sync_tags_for_item_structured") as mock_sync:
             mock_sync.side_effect = [
-                (True, "Updated tags: [] -> ['Action']"),
-                (True, "Updated tags: [] -> ['Comedy']"),
+                TagSyncService.SyncResult(True, "Added tags: ['Action']", "updated"),
+                TagSyncService.SyncResult(True, "Added tags: ['Comedy']", "updated"),
             ]
 
             result = self.sync_service.sync_all_tags(batch_size=10)
@@ -319,10 +319,10 @@ class TestTagSyncService:
         self.mock_arr_client.get_all_items.return_value = mock_items
 
         # Mock one success and one failure
-        with patch.object(self.sync_service, "sync_tags_for_item") as mock_sync:
+        with patch.object(self.sync_service, "sync_tags_for_item_structured") as mock_sync:
             mock_sync.side_effect = [
-                (True, "Updated tags: [] -> ['Action']"),
-                (False, "Failed to update tags"),
+                TagSyncService.SyncResult(True, "Added tags: ['Action']", "updated"),
+                TagSyncService.SyncResult(False, "Failed to update tags", "failed"),
             ]
 
             result = self.sync_service.sync_all_tags(batch_size=10)
@@ -334,33 +334,11 @@ class TestTagSyncService:
         assert result["failed_syncs"] == 1
         assert len(result["errors"]) == 1
 
-    def test_prefetch_emby_items_with_exception(self):
-        """Test _prefetch_emby_items method exception handling."""
-
-        # Create an object that raises TypeError when len() is called
-        class BadLengthObject:
-            def __len__(self):
-                raise TypeError("Mock error")
-
-        self.mock_emby_client.get_all_movies.return_value = BadLengthObject()
-
-        # Should handle the exception gracefully
-        self.sync_service._prefetch_emby_items()
-
-        # Cache should be set to empty list after TypeError
-        assert self.sync_service._emby_items_cache == []
-
-        # Test normal cache population
-        self.sync_service._emby_items_cache = None
-        self.mock_emby_client.get_all_movies.return_value = [
-            {"Id": "1", "ProviderIds": {"Tmdb": "123"}},
-            {"Id": "2", "ProviderIds": {"Imdb": "tt456"}},
-        ]
-
-        # Should populate cache normally
-        self.sync_service._prefetch_emby_items()
-        assert self.sync_service._emby_items_cache is not None
-        assert len(self.sync_service._emby_items_cache) == 2
+    def test_warm_emby_client_cache_calls_movies(self):
+        """Warm cache should call get_all_movies for radarr."""
+        self.mock_arr_client.arr_type = "radarr"
+        self.sync_service._warm_emby_client_cache()
+        self.mock_emby_client.get_all_movies.assert_called_once()
 
     def test_find_matching_emby_item_with_debug_logging(self):
         """Test find_matching_emby_item debug path when no match found."""
@@ -409,8 +387,8 @@ class TestTagSyncService:
         self.mock_emby_client.test_connection.return_value = True
         self.mock_arr_client.get_all_items.return_value = [{"id": 1, "title": "Not Found Movie", "tags": [1]}]
 
-        with patch.object(self.sync_service, "sync_tags_for_item") as mock_sync:
-            mock_sync.return_value = (True, "Item not found in Emby")
+        with patch.object(self.sync_service, "sync_tags_for_item_structured") as mock_sync:
+            mock_sync.return_value = TagSyncService.SyncResult(True, "Item not found in Emby", "not_in_emby")
 
             result = self.sync_service.sync_all_tags()
 
@@ -423,8 +401,8 @@ class TestTagSyncService:
         self.mock_emby_client.test_connection.return_value = True
         self.mock_arr_client.get_all_items.return_value = [{"id": 1, "title": "Synced Movie", "tags": [1]}]
 
-        with patch.object(self.sync_service, "sync_tags_for_item") as mock_sync:
-            mock_sync.return_value = (True, "Tags already up to date")
+        with patch.object(self.sync_service, "sync_tags_for_item_structured") as mock_sync:
+            mock_sync.return_value = TagSyncService.SyncResult(True, "Tags already up to date", "already_synced")
 
             result = self.sync_service.sync_all_tags()
 
@@ -437,8 +415,8 @@ class TestTagSyncService:
         self.mock_emby_client.test_connection.return_value = True
         self.mock_arr_client.get_all_items.return_value = [{"id": 1, "title": "No Tags Movie", "tags": []}]
 
-        with patch.object(self.sync_service, "sync_tags_for_item") as mock_sync:
-            mock_sync.return_value = (True, "No tags to sync")
+        with patch.object(self.sync_service, "sync_tags_for_item_structured") as mock_sync:
+            mock_sync.return_value = TagSyncService.SyncResult(True, "No tags to sync", "no_tags")
 
             result = self.sync_service.sync_all_tags()
 
@@ -451,7 +429,7 @@ class TestTagSyncService:
         self.mock_emby_client.test_connection.return_value = True
         self.mock_arr_client.get_all_items.return_value = [{"id": 1, "title": "Error Movie", "tags": [1]}]
 
-        with patch.object(self.sync_service, "sync_tags_for_item") as mock_sync:
+        with patch.object(self.sync_service, "sync_tags_for_item_structured") as mock_sync:
             mock_sync.side_effect = Exception("Unexpected error")
 
             result = self.sync_service.sync_all_tags()
@@ -503,26 +481,20 @@ class TestTagSyncService:
         """Test clearing all caches."""
         # Set up some cached data
         self.sync_service._arr_tags_cache = {"test": "data"}
-        self.sync_service._emby_items_cache = {"test": "data"}
 
         # Clear caches
         self.sync_service.clear_caches()
 
         # Verify caches are cleared
         assert self.sync_service._arr_tags_cache is None
-        assert self.sync_service._emby_items_cache is None
+        # No local emby items cache anymore
         self.mock_emby_client.clear_cache.assert_called_once()
 
-    def test_prefetch_emby_items_already_cached(self):
-        """Test _prefetch_emby_items when cache is already populated."""
-        # Set cache to already have data
-        self.sync_service._emby_items_cache = [{"Id": "cached"}]
-
-        # Should return early without calling get_all_movies
-        self.sync_service._prefetch_emby_items()
-
-        # get_all_movies should not have been called
-        self.mock_emby_client.get_all_movies.assert_not_called()
+    def test_warm_emby_client_cache_calls_series(self):
+        """Warm cache should call get_all_series for sonarr."""
+        self.mock_arr_client.arr_type = "sonarr"
+        self.sync_service._warm_emby_client_cache()
+        self.mock_emby_client.get_all_series.assert_called_once()
 
     def test_find_matching_emby_item_debug_sonarr(self):
         """Test find_matching_emby_item debug logging for sonarr items."""

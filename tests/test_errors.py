@@ -81,18 +81,18 @@ class TestErrorFormatting:
 
     def test_format_missing_env_vars(self):
         """Test formatting missing environment variables."""
-        missing_vars = ["arr_type", "arr_url", "emby_url"]
+        missing_vars = ["arr_1_type", "arr_1_url", "emby_url"]
         formatted = format_missing_env_vars(missing_vars)
 
         # Check that environment variable names are properly prefixed
-        assert "ARREM_ARR_TYPE" in formatted
-        assert "ARREM_ARR_URL" in formatted
+        assert "ARREM_ARR_1_TYPE" in formatted
+        assert "ARREM_ARR_1_URL" in formatted
         assert "ARREM_EMBY_URL" in formatted
 
         # Check that helpful content is included
         assert "❌ Missing required configuration:" in formatted
         assert "💡 Example configuration:" in formatted
-        assert "export ARREM_ARR_TYPE=radarr" in formatted
+        assert "export ARREM_ARR_1_TYPE=radarr" in formatted
         assert "🔗 See the README.md for complete configuration details." in formatted
 
     def test_format_missing_env_vars_empty(self):

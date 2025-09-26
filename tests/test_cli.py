@@ -6,10 +6,9 @@ from unittest.mock import MagicMock, patch
 from click.testing import CliRunner
 from pydantic import ValidationError
 
-from arrem_sync.arr_client import ArrClient
-from arrem_sync.cli import cli, create_clients, setup_logging
+from arrem_sync.cli import cli, setup_logging
+from arrem_sync.client_factory import create_clients
 from arrem_sync.config import Config
-from arrem_sync.emby_client import EmbyClient
 
 
 class TestCLIUtilities:
@@ -73,17 +72,26 @@ class TestCLIUtilities:
 
     def test_create_clients(self):
         """Test client creation from config."""
+        # Import here to avoid circular imports in test
+        from arrem_sync.arr_client import ArrClient
+        from arrem_sync.config import ArrInstanceConfig
+        from arrem_sync.emby_client import EmbyClient
+
         config = Config(
-            arr_type="radarr",
-            arr_url="http://localhost:7878",
-            arr_api_key="test_arr_key",
+            arr_instances=[
+                ArrInstanceConfig(
+                    type="radarr", url="http://localhost:7878", api_key="test_arr_key", name="Test Radarr"
+                )
+            ],
             emby_url="http://localhost:8096",
             emby_api_key="test_emby_key",
         )
 
-        arr_client, emby_client = create_clients(config)
+        arr_clients, emby_client = create_clients(config)
 
         # Verify clients are created correctly
+        assert len(arr_clients) == 1
+        arr_client = arr_clients[0]
         assert isinstance(arr_client, ArrClient)
         assert isinstance(emby_client, EmbyClient)
 
@@ -95,43 +103,23 @@ class TestCLIUtilities:
         assert emby_client.server_url == "http://localhost:8096"
         assert emby_client.api_key == "test_emby_key"
 
-    @patch("arrem_sync.cli.ArrClient")
-    @patch("arrem_sync.cli.EmbyClient")
-    def test_create_clients_initialization_calls(self, mock_emby_client, mock_arr_client):
-        """Test that clients are initialized with correct parameters."""
-        config = Config(
-            arr_type="radarr",
-            arr_url="http://localhost:7878",
-            arr_api_key="test_arr_key",
-            emby_url="http://localhost:8096",
-            emby_api_key="test_emby_key",
-        )
-
-        create_clients(config)
-
-        # Verify ArrClient was called with correct parameters
-        mock_arr_client.assert_called_once_with(
-            arr_type="radarr", base_url="http://localhost:7878", api_key="test_arr_key"
-        )
-
-        # Verify EmbyClient was called with correct parameters
-        mock_emby_client.assert_called_once_with(server_url="http://localhost:8096", api_key="test_emby_key")
-
 
 class TestCLICommands:
     """Test CLI commands using Click's test runner."""
 
     @patch("arrem_sync.cli.get_config")
     @patch("arrem_sync.cli.create_clients")
-    @patch("arrem_sync.cli.TagSyncService")
+    @patch("arrem_sync.cli.MultiTagSyncService")
     def test_sync_command_success(self, mock_sync_service, mock_create_clients, mock_get_config):
         """Test successful sync command execution."""
 
-        # Mock configuration
+        # Mock configuration with multi-instance format
+        from arrem_sync.config import ArrInstanceConfig
+
         mock_config = Config(
-            arr_type="radarr",
-            arr_url="http://localhost:7878",
-            arr_api_key="test_key",
+            arr_instances=[
+                ArrInstanceConfig(type="radarr", url="http://localhost:7878", api_key="test_key", name="Test Radarr")
+            ],
             emby_url="http://localhost:8096",
             emby_api_key="test_key",
             dry_run=False,
@@ -142,14 +130,32 @@ class TestCLICommands:
         mock_get_config.return_value = mock_config
 
         # Mock clients
-        mock_arr_client = MagicMock()
+        mock_arr_clients = [MagicMock()]
         mock_emby_client = MagicMock()
-        mock_create_clients.return_value = (mock_arr_client, mock_emby_client)
+        mock_create_clients.return_value = (mock_arr_clients, mock_emby_client)
 
         # Mock sync service
         mock_service_instance = MagicMock()
         mock_sync_service.return_value = mock_service_instance
-        mock_service_instance.sync_all_tags.return_value = {
+        mock_service_instance.sync_all_instances.return_value = {
+            "total_instances": 1,
+            "instance_results": [
+                {
+                    "instance_number": 1,
+                    "instance_name": "Test Radarr (radarr)",
+                    "arr_type": "radarr",
+                    "stats": {
+                        "total_items": 100,
+                        "processed_items": 100,
+                        "successful_syncs": 80,
+                        "already_synced": 15,
+                        "no_tags_to_sync": 5,
+                        "not_in_emby": 0,
+                        "failed_syncs": 0,
+                        "errors": [],
+                    },
+                }
+            ],
             "total_items": 100,
             "processed_items": 100,
             "successful_syncs": 80,
@@ -171,20 +177,23 @@ class TestCLICommands:
 
         # Verify service was called correctly
         mock_sync_service.assert_called_once_with(
-            arr_client=mock_arr_client, emby_client=mock_emby_client, dry_run=False
+            arr_clients=mock_arr_clients, emby_client=mock_emby_client, dry_run=False
         )
-        mock_service_instance.sync_all_tags.assert_called_once_with(batch_size=10)
+        mock_service_instance.sync_all_instances.assert_called_once_with(batch_size=10)
 
     @patch("arrem_sync.cli.get_config")
     @patch("arrem_sync.cli.create_clients")
-    @patch("arrem_sync.cli.TagSyncService")
+    @patch("arrem_sync.cli.MultiTagSyncService")
     def test_sync_command_with_dry_run_flag(self, mock_sync_service, mock_create_clients, mock_get_config):
         """Test sync command with --dry-run flag."""
 
+        # Mock configuration with multi-instance format
+        from arrem_sync.config import ArrInstanceConfig
+
         mock_config = Config(
-            arr_type="radarr",
-            arr_url="http://localhost:7878",
-            arr_api_key="test_key",
+            arr_instances=[
+                ArrInstanceConfig(type="radarr", url="http://localhost:7878", api_key="test_key", name="Test Radarr")
+            ],
             emby_url="http://localhost:8096",
             emby_api_key="test_key",
             dry_run=False,  # Initially false
@@ -194,13 +203,32 @@ class TestCLICommands:
         )
         mock_get_config.return_value = mock_config
 
-        mock_arr_client = MagicMock()
+        # Mock clients
+        mock_arr_clients = [MagicMock()]
         mock_emby_client = MagicMock()
-        mock_create_clients.return_value = (mock_arr_client, mock_emby_client)
+        mock_create_clients.return_value = (mock_arr_clients, mock_emby_client)
 
         mock_service_instance = MagicMock()
         mock_sync_service.return_value = mock_service_instance
-        mock_service_instance.sync_all_tags.return_value = {
+        mock_service_instance.sync_all_instances.return_value = {
+            "total_instances": 1,
+            "instance_results": [
+                {
+                    "instance_number": 1,
+                    "instance_name": "Test Radarr (radarr)",
+                    "arr_type": "radarr",
+                    "stats": {
+                        "total_items": 10,
+                        "processed_items": 10,
+                        "successful_syncs": 0,
+                        "already_synced": 0,
+                        "no_tags_to_sync": 0,
+                        "not_in_emby": 0,
+                        "failed_syncs": 0,
+                        "errors": [],
+                    },
+                }
+            ],
             "total_items": 10,
             "processed_items": 10,
             "successful_syncs": 0,
@@ -220,19 +248,22 @@ class TestCLICommands:
 
         # Service should be created with dry_run=True
         mock_sync_service.assert_called_once_with(
-            arr_client=mock_arr_client, emby_client=mock_emby_client, dry_run=True
+            arr_clients=mock_arr_clients, emby_client=mock_emby_client, dry_run=True
         )
 
     @patch("arrem_sync.cli.get_config")
     @patch("arrem_sync.cli.create_clients")
-    @patch("arrem_sync.cli.TagSyncService")
+    @patch("arrem_sync.cli.MultiTagSyncService")
     def test_sync_command_with_failures(self, mock_sync_service, mock_create_clients, mock_get_config):
         """Test sync command when there are failures."""
 
+        # Mock configuration with multi-instance format
+        from arrem_sync.config import ArrInstanceConfig
+
         mock_config = Config(
-            arr_type="radarr",
-            arr_url="http://localhost:7878",
-            arr_api_key="test_key",
+            arr_instances=[
+                ArrInstanceConfig(type="radarr", url="http://localhost:7878", api_key="test_key", name="Test Radarr")
+            ],
             emby_url="http://localhost:8096",
             emby_api_key="test_key",
             dry_run=False,
@@ -242,13 +273,32 @@ class TestCLICommands:
         )
         mock_get_config.return_value = mock_config
 
-        mock_arr_client = MagicMock()
+        # Mock clients
+        mock_arr_clients = [MagicMock()]
         mock_emby_client = MagicMock()
-        mock_create_clients.return_value = (mock_arr_client, mock_emby_client)
+        mock_create_clients.return_value = (mock_arr_clients, mock_emby_client)
 
         mock_service_instance = MagicMock()
         mock_sync_service.return_value = mock_service_instance
-        mock_service_instance.sync_all_tags.return_value = {
+        mock_service_instance.sync_all_instances.return_value = {
+            "total_instances": 1,
+            "instance_results": [
+                {
+                    "instance_number": 1,
+                    "instance_name": "Test Radarr (radarr)",
+                    "arr_type": "radarr",
+                    "stats": {
+                        "total_items": 50,
+                        "processed_items": 50,
+                        "successful_syncs": 40,
+                        "already_synced": 5,
+                        "no_tags_to_sync": 0,
+                        "not_in_emby": 2,
+                        "failed_syncs": 3,
+                        "errors": ["Error 1", "Error 2", "Error 3"],
+                    },
+                }
+            ],
             "total_items": 50,
             "processed_items": 50,
             "successful_syncs": 40,
@@ -288,27 +338,33 @@ class TestCLICommands:
     def test_test_command_success(self, mock_create_clients, mock_get_config):
         """Test successful test command execution."""
 
+        # Mock configuration with multi-instance format
+        from arrem_sync.config import ArrInstanceConfig
+
         mock_config = Config(
-            arr_type="radarr",
-            arr_url="http://localhost:7878",
-            arr_api_key="test_key",
+            arr_instances=[
+                ArrInstanceConfig(type="radarr", url="http://localhost:7878", api_key="test_key", name="Test Radarr")
+            ],
             emby_url="http://localhost:8096",
             emby_api_key="test_key",
             log_level="INFO",
         )
         mock_get_config.return_value = mock_config
 
+        # Mock clients
         mock_arr_client = MagicMock()
         mock_arr_client.test_connection.return_value = True
+        mock_arr_client.arr_type = "radarr"
+        mock_arr_client.instance_name = "Test Radarr"
         mock_emby_client = MagicMock()
         mock_emby_client.test_connection.return_value = True
-        mock_create_clients.return_value = (mock_arr_client, mock_emby_client)
+        mock_create_clients.return_value = ([mock_arr_client], mock_emby_client)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["test"])
 
         assert result.exit_code == 0
-        assert "Testing radarr connection... ✓ Success" in result.output
+        assert "Testing Test Radarr (radarr)... ✓ Success" in result.output
         assert "Testing Emby connection... ✓ Success" in result.output
         assert "All connections successful!" in result.output
 
@@ -317,53 +373,66 @@ class TestCLICommands:
     def test_test_command_arr_failure(self, mock_create_clients, mock_get_config):
         """Test test command with Arr connection failure."""
 
+        # Mock configuration with multi-instance format
+        from arrem_sync.config import ArrInstanceConfig
+
         mock_config = Config(
-            arr_type="sonarr",
-            arr_url="http://localhost:8989",
-            arr_api_key="test_key",
+            arr_instances=[
+                ArrInstanceConfig(type="sonarr", url="http://localhost:8989", api_key="test_key", name="Test Sonarr")
+            ],
             emby_url="http://localhost:8096",
             emby_api_key="test_key",
             log_level="INFO",
         )
         mock_get_config.return_value = mock_config
 
+        # Mock clients
         mock_arr_client = MagicMock()
         mock_arr_client.test_connection.return_value = False  # Connection fails
+        mock_arr_client.arr_type = "sonarr"
+        mock_arr_client.instance_name = "Test Sonarr"
         mock_emby_client = MagicMock()
-        mock_create_clients.return_value = (mock_arr_client, mock_emby_client)
+        mock_emby_client.test_connection.return_value = True
+        mock_create_clients.return_value = ([mock_arr_client], mock_emby_client)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["test"])
 
         assert result.exit_code == 1
-        assert "Testing sonarr connection... ✗ Failed" in result.output
+        assert "Testing Test Sonarr (sonarr)... ✗ Failed" in result.output
 
     @patch("arrem_sync.cli.get_config")
     @patch("arrem_sync.cli.create_clients")
     def test_test_command_emby_failure(self, mock_create_clients, mock_get_config):
         """Test test command with Emby connection failure."""
 
+        # Mock configuration with multi-instance format
+        from arrem_sync.config import ArrInstanceConfig
+
         mock_config = Config(
-            arr_type="radarr",
-            arr_url="http://localhost:7878",
-            arr_api_key="test_key",
+            arr_instances=[
+                ArrInstanceConfig(type="radarr", url="http://localhost:7878", api_key="test_key", name="Test Radarr")
+            ],
             emby_url="http://localhost:8096",
             emby_api_key="test_key",
             log_level="INFO",
         )
         mock_get_config.return_value = mock_config
 
+        # Mock clients
         mock_arr_client = MagicMock()
         mock_arr_client.test_connection.return_value = True
+        mock_arr_client.arr_type = "radarr"
+        mock_arr_client.instance_name = "Test Radarr"
         mock_emby_client = MagicMock()
         mock_emby_client.test_connection.return_value = False  # Emby connection fails
-        mock_create_clients.return_value = (mock_arr_client, mock_emby_client)
+        mock_create_clients.return_value = ([mock_arr_client], mock_emby_client)
 
         runner = CliRunner()
         result = runner.invoke(cli, ["test"])
 
         assert result.exit_code == 1
-        assert "Testing radarr connection... ✓ Success" in result.output
+        assert "Testing Test Radarr (radarr)... ✓ Success" in result.output
         assert "Testing Emby connection... ✗ Failed" in result.output
 
     @patch("arrem_sync.cli.get_config")
@@ -382,15 +451,18 @@ class TestCLICommands:
 
     @patch("arrem_sync.cli.get_config")
     @patch("arrem_sync.cli.create_clients")
-    @patch("arrem_sync.cli.TagSyncService")
+    @patch("arrem_sync.cli.MultiTagSyncService")
     def test_sync_command_unexpected_error(self, mock_sync_service, mock_create_clients, mock_get_config):
         """Test sync command with unexpected error."""
         from click.testing import CliRunner
 
+        # Mock configuration with multi-instance format
+        from arrem_sync.config import ArrInstanceConfig
+
         mock_config = Config(
-            arr_type="radarr",
-            arr_url="http://localhost:7878",
-            arr_api_key="test_key",
+            arr_instances=[
+                ArrInstanceConfig(type="radarr", url="http://localhost:7878", api_key="test_key", name="Test Radarr")
+            ],
             emby_url="http://localhost:8096",
             emby_api_key="test_key",
             dry_run=False,
@@ -400,9 +472,10 @@ class TestCLICommands:
         )
         mock_get_config.return_value = mock_config
 
-        mock_arr_client = MagicMock()
+        # Mock clients
+        mock_arr_clients = [MagicMock()]
         mock_emby_client = MagicMock()
-        mock_create_clients.return_value = (mock_arr_client, mock_emby_client)
+        mock_create_clients.return_value = (mock_arr_clients, mock_emby_client)
 
         # Mock an unexpected exception
         mock_sync_service.side_effect = RuntimeError("Unexpected error occurred")
@@ -417,11 +490,10 @@ class TestCLICommands:
     @patch("arrem_sync.cli.create_clients")
     def test_test_command_unexpected_error(self, mock_create_clients, mock_get_config):
         """Test test command with unexpected error."""
+        from arrem_sync.config import ArrInstanceConfig
 
         mock_config = Config(
-            arr_type="radarr",
-            arr_url="http://localhost:7878",
-            arr_api_key="test_key",
+            arr_instances=[ArrInstanceConfig(type="radarr", url="http://localhost:7878", api_key="test_key")],
             emby_url="http://localhost:8096",
             emby_api_key="test_key",
             log_level="INFO",
@@ -444,7 +516,7 @@ class TestCLICommands:
         result = runner.invoke(cli, ["--version"])
 
         assert result.exit_code == 0
-        assert "1.0.0" in result.output
+        assert "0.0.1" in result.output
 
     def test_sync_no_dry_run_option(self):
         """Test that --no-dry-run option is available and works."""
@@ -468,10 +540,10 @@ class TestCLICommands:
     def test_sync_no_dry_run_overrides_config(self, mock_get_config):
         """Test that --no-dry-run overrides config default."""
         # Mock configuration with default dry_run=True
+        from arrem_sync.config import ArrInstanceConfig
+
         mock_config = Config(
-            arr_type="radarr",
-            arr_url="http://localhost:7878",
-            arr_api_key="test_key",
+            arr_instances=[ArrInstanceConfig(type="radarr", url="http://localhost:7878", api_key="test_key")],
             emby_url="http://localhost:8096",
             emby_api_key="test_key",
             dry_run=True,  # Default is now True

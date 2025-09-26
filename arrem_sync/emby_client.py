@@ -1,11 +1,12 @@
 """Emby client for interacting with Emby server API."""
 
+import contextlib
 import logging
+from types import TracebackType
 from typing import Any
 
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+from .http_utils import create_session
+from .types import EmbyItem
 
 logger = logging.getLogger(__name__)
 
@@ -24,21 +25,12 @@ class EmbyClient:
         self.api_key = api_key
 
         # Caches for efficient lookups
-        self._movies_cache: list[dict[str, Any]] | None = None
-        self._series_cache: list[dict[str, Any]] | None = None
-        self._provider_id_cache: dict[str, dict[str, Any]] = {}
+        self._movies_cache: list[EmbyItem] | None = None
+        self._series_cache: list[EmbyItem] | None = None
+        self._provider_id_cache: dict[str, EmbyItem] = {}
 
         # Set up requests session with retry strategy and connection pooling
-        self.session = requests.Session()
-        retry_strategy = Retry(total=3, status_forcelist=[429, 500, 502, 503, 504], backoff_factor=1)
-        # Optimize connection pooling for better performance
-        adapter = HTTPAdapter(
-            max_retries=retry_strategy,
-            pool_connections=10,  # Number of connection pools to cache
-            pool_maxsize=20,  # Maximum number of connections to save in the pool
-        )
-        self.session.mount("http://", adapter)
-        self.session.mount("https://", adapter)
+        self.session = create_session()
 
         # Default headers
         self.session.headers.update(
@@ -68,7 +60,7 @@ class EmbyClient:
             logger.error(f"Connection to Emby server failed: {e}")
             return False
 
-    def get_all_movies(self) -> list[dict[str, Any]]:
+    def get_all_movies(self) -> list[EmbyItem]:
         """Get all movies from Emby with caching.
 
         Returns:
@@ -106,7 +98,7 @@ class EmbyClient:
             logger.error(f"Failed to fetch movies from Emby: {e}")
             raise
 
-    def get_all_series(self) -> list[dict[str, Any]]:
+    def get_all_series(self) -> list[EmbyItem]:
         """Get all TV series from Emby with caching.
 
         Returns:
@@ -170,7 +162,7 @@ class EmbyClient:
             logger.error(f"Failed to fetch tags from Emby: {e}")
             raise
 
-    def _build_provider_id_cache(self, items: list[dict[str, Any]]) -> None:
+    def _build_provider_id_cache(self, items: list[EmbyItem]) -> None:
         """Build a cache of provider IDs to items for fast lookups.
 
         Args:
@@ -228,9 +220,7 @@ class EmbyClient:
             logger.error(f"Failed to update tags for item {item_id}: {e}")
             return False
 
-    def find_item_by_provider_id(
-        self, provider: str, provider_id: str, item_type: str = "Movie"
-    ) -> dict[str, Any] | None:
+    def find_item_by_provider_id(self, provider: str, provider_id: str, item_type: str = "Movie") -> EmbyItem | None:
         """Find an Emby item by external provider ID (e.g., IMDb, TheMovieDB).
 
         This method uses caching for efficient lookups. It will automatically
@@ -270,7 +260,23 @@ class EmbyClient:
 
             logger.debug(f"No {item_type} found with {provider} ID: {provider_id}")
             return None
-
         except Exception as e:
             logger.error(f"Error searching for item with {provider} ID {provider_id}: {e}")
             return None
+
+    # Resource management
+    def close(self) -> None:
+        """Close underlying HTTP session."""
+        with contextlib.suppress(Exception):
+            self.session.close()
+
+    def __enter__(self) -> "EmbyClient":
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self.close()

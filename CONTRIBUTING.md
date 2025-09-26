@@ -53,7 +53,6 @@ ArrEm-sync/
 │   ├── test_config.py
 │   ├── test_emby_client.py
 │   └── test_sync_service.py
-├── main.py                # Entry point (legacy - use arrem-sync command)
 ├── pyproject.toml         # Project configuration, dependencies, and tool settings
 ├── uv.lock                # Dependency lock file (uv)
 ├── Dockerfile             # Docker image definition
@@ -166,8 +165,6 @@ mypy arrem_sync/
 
    # Test CLI functionality
    arrem-sync --help
-   # Or legacy entry point
-   python main.py --help
    ```
 
 4. **Commit your changes**:
@@ -229,8 +226,6 @@ export ARREM_EMBY_API_KEY="your_test_key"
 
 # Run integration tests
 arrem-sync test
-# Or legacy entry point
-python main.py test
 ```
 
 ### Test Coverage
@@ -250,9 +245,7 @@ Enable debug logging for development:
 
 ```bash
 export ARREM_LOG_LEVEL=DEBUG
-arrem-sync sync --dry-run
-# Or legacy entry point
-python main.py sync --dry-run
+arrem-sync
 ```
 
 ### Common Development Issues

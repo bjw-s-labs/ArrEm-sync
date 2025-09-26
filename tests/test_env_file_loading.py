@@ -18,9 +18,10 @@ ARREM_DRY_RUN=true
 ARREM_BATCH_SIZE=25
 ARREM_EMBY_URL=http://test-emby:8096
 ARREM_EMBY_API_KEY=test-api-key
-ARREM_ARR_TYPE=radarr
-ARREM_ARR_URL=http://test-radarr:7878
-ARREM_ARR_API_KEY=test-radarr-key
+ARREM_ARR_1_TYPE=radarr
+ARREM_ARR_1_URL=http://test-radarr:7878
+ARREM_ARR_1_API_KEY=test-radarr-key
+ARREM_ARR_1_NAME=Test Radarr
 """
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -55,9 +56,11 @@ ARREM_ARR_API_KEY=test-radarr-key
                     assert config.batch_size == 25
                     assert config.emby_url == "http://test-emby:8096"
                     assert config.emby_api_key == "test-api-key"
-                    assert config.arr_type == "radarr"
-                    assert config.arr_url == "http://test-radarr:7878"
-                    assert config.arr_api_key == "test-radarr-key"
+                    assert len(config.arr_instances) == 1
+                    assert config.arr_instances[0].type == "radarr"
+                    assert config.arr_instances[0].url == "http://test-radarr:7878"
+                    assert config.arr_instances[0].api_key == "test-radarr-key"
+                    assert config.arr_instances[0].name == "Test Radarr"
 
     def test_env_variables_override_env_file(self):
         """Test that environment variables override .env file values."""
@@ -66,9 +69,10 @@ ARREM_ARR_API_KEY=test-radarr-key
 ARREM_DRY_RUN=true
 ARREM_EMBY_URL=http://env-file-emby:8096
 ARREM_EMBY_API_KEY=env-file-api-key
-ARREM_ARR_TYPE=radarr
-ARREM_ARR_URL=http://env-file-radarr:7878
-ARREM_ARR_API_KEY=env-file-radarr-key
+ARREM_ARR_1_TYPE=radarr
+ARREM_ARR_1_URL=http://env-file-radarr:7878
+ARREM_ARR_1_API_KEY=env-file-radarr-key
+ARREM_ARR_1_NAME=Env File Radarr
 """
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -84,9 +88,10 @@ ARREM_ARR_API_KEY=env-file-radarr-key
                 "ARREM_DRY_RUN": "true",
                 "ARREM_EMBY_URL": "http://override-emby:8096",
                 "ARREM_EMBY_API_KEY": "override-api-key",
-                "ARREM_ARR_TYPE": "sonarr",
-                "ARREM_ARR_URL": "http://override-sonarr:8989",
-                "ARREM_ARR_API_KEY": "override-sonarr-key",
+                "ARREM_ARR_1_TYPE": "sonarr",
+                "ARREM_ARR_1_URL": "http://override-sonarr:8989",
+                "ARREM_ARR_1_API_KEY": "override-sonarr-key",
+                "ARREM_ARR_1_NAME": "Override Sonarr",
             }
 
             # Mock load_dotenv to load from our specific file first
@@ -112,9 +117,11 @@ ARREM_ARR_API_KEY=env-file-radarr-key
                     assert config.dry_run is True
                     assert config.emby_url == "http://override-emby:8096"
                     assert config.emby_api_key == "override-api-key"
-                    assert config.arr_type == "sonarr"
-                    assert config.arr_url == "http://override-sonarr:8989"
-                    assert config.arr_api_key == "override-sonarr-key"
+                    assert len(config.arr_instances) == 1
+                    assert config.arr_instances[0].type == "sonarr"
+                    assert config.arr_instances[0].url == "http://override-sonarr:8989"
+                    assert config.arr_instances[0].api_key == "override-sonarr-key"
+                    assert config.arr_instances[0].name == "Override Sonarr"
 
     def test_config_without_env_file(self):
         """Test config works without .env file (using only env variables)."""
@@ -122,9 +129,10 @@ ARREM_ARR_API_KEY=env-file-radarr-key
         env_vars = {
             "ARREM_EMBY_URL": "http://direct-emby:8096",
             "ARREM_EMBY_API_KEY": "direct-api-key",
-            "ARREM_ARR_TYPE": "radarr",
-            "ARREM_ARR_URL": "http://direct-radarr:7878",
-            "ARREM_ARR_API_KEY": "direct-radarr-key",
+            "ARREM_ARR_1_TYPE": "radarr",
+            "ARREM_ARR_1_URL": "http://direct-radarr:7878",
+            "ARREM_ARR_1_API_KEY": "direct-radarr-key",
+            "ARREM_ARR_1_NAME": "Direct Radarr",
         }
 
         # Mock load_dotenv to do nothing (simulate no .env file)
@@ -138,9 +146,11 @@ ARREM_ARR_API_KEY=env-file-radarr-key
             # Verify values from environment variables
             assert config.emby_url == "http://direct-emby:8096"
             assert config.emby_api_key == "direct-api-key"
-            assert config.arr_type == "radarr"
-            assert config.arr_url == "http://direct-radarr:7878"
-            assert config.arr_api_key == "direct-radarr-key"
+            assert len(config.arr_instances) == 1
+            assert config.arr_instances[0].type == "radarr"
+            assert config.arr_instances[0].url == "http://direct-radarr:7878"
+            assert config.arr_instances[0].api_key == "direct-radarr-key"
+            assert config.arr_instances[0].name == "Direct Radarr"
             # Verify defaults are used for optional values
             assert config.log_level == "INFO"
             assert config.dry_run is True
