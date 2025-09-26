@@ -15,6 +15,7 @@ from .client_factory import create_clients
 from .config import get_config
 from .errors import handle_config_error
 from .multi_sync_service import MultiTagSyncService
+from .version import __version__
 
 
 class DefaultGroup(click.Group):
@@ -73,7 +74,7 @@ def setup_logging(log_level: str) -> None:
 
 
 @click.group(cls=DefaultGroup)
-@click.version_option()
+@click.version_option(version=__version__)
 def cli() -> None:
     """ArrEm-sync: Sync tags between Radarr/Sonarr and Emby."""
     pass

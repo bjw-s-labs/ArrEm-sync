@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ArrEm-sync"
-version = "0.0.2"
+dynamic = ["version"]
 description = "Sync tags from Radarr/Sonarr to Emby media server"
 requires-python = ">=3.13"
 keywords = ["media", "radarr", "sonarr", "emby", "sync", "tags"]
@@ -118,6 +118,9 @@ unfixable = [
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+# Hatchling: read version from arrem_sync/version.py
+[tool.hatch.version]
+path = "arrem_sync/version.py"
 skip-magic-trailing-comma = false
 line-ending = "auto"
 

@@ -516,7 +516,10 @@ class TestCLICommands:
         result = runner.invoke(cli, ["--version"])
 
         assert result.exit_code == 0
-        assert "0.0.1" in result.output
+        # Import the package version to compare dynamically
+        from arrem_sync import __version__
+
+        assert __version__ in result.output
 
     def test_sync_no_dry_run_option(self):
         """Test that --no-dry-run option is available and works."""

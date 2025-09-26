@@ -1,12 +1,6 @@
 """ArrEm-sync: Sync tags between Radarr/Sonarr and Emby."""
 
-from importlib.metadata import PackageNotFoundError, version
-
-try:
-    __version__ = version("ArrEm-sync")
-except PackageNotFoundError:
-    # Fallback for editable/source checkouts without installed dist
-    __version__ = "0.0.2"
+from .version import __version__
 
 __author__ = "bjw-s-labs"
 __email__ = ""
