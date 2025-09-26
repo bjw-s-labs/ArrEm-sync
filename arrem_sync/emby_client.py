@@ -203,7 +203,7 @@ class EmbyClient:
             if dry_run:
                 return True
 
-            logger.info(f"Updating item {item_id} with tags: {tags}")
+            logger.debug(f"Updating item {item_id} with tags: {tags}")
 
             # Use direct item update approach for better compatibility
             item_data = {"Tags": [{"Name": tag} for tag in tags]}
@@ -213,7 +213,7 @@ class EmbyClient:
             response = self.session.post(url, json=item_data, timeout=10)
             response.raise_for_status()
 
-            logger.info(f"Successfully updated tags for item {item_id}")
+            logger.debug(f"Successfully updated tags for item {item_id}")
             return True
 
         except Exception as e:
