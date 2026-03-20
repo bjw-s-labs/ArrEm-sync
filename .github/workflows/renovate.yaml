@@ -28,7 +28,7 @@ jobs:
           owner: ${{ github.repository_owner }}
 
       - name: Run Renovate
-        uses: codex-/return-dispatch@e23442963c2e1aa0a88234e3cba076f8bbef8975 # v2.2.0
+        uses: codex-/return-dispatch@16fa9d14771c4d56ae0196bbda1d3c17f7f3650f # v3.0.2
         id: return_dispatch
         with:
           token: ${{ steps.app-token.outputs.token }}
