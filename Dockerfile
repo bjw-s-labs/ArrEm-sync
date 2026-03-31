@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock /app/
 COPY arrem_sync/ /app/arrem_sync/
-COPY --from=ghcr.io/astral-sh/uv:0.8.22@sha256:9874eb7afe5ca16c363fe80b294fe700e460df29a55532bbfea234a0f12eddb1 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.2@sha256:c4f5de312ee66d46810635ffc5df34a1973ba753e7241ce3a08ef979ddd7bea5 /uv /uvx /bin/
 
 RUN \
     apk add --no-cache \
